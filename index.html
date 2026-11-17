@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -82,16 +83,21 @@
     <section class="panel chart-panel col-side" aria-labelledby="chart-h">
       <div class="chart-head">
         <h2 id="chart-h">Course plot</h2>
-        <button id="btn-reset" class="btn btn-quiet" type="button">Reset marks to SI</button>
+        <div class="chart-tools">
+          <label class="check" id="chart-toggle-wrap" for="in-chart" hidden><input id="in-chart" type="checkbox" checked> NOAA chart</label>
+          <button id="btn-reset" class="btn btn-quiet" type="button">Reset marks to SI</button>
+        </div>
       </div>
+      <div id="map" class="map" role="region" aria-label="Chart of the race course" hidden></div>
       <svg id="plot" class="plot" role="img" aria-label="Course plot of the race marks"></svg>
       <ul class="legend" aria-label="Chart symbols">
         <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="sym-line" cx="8" cy="8" r="6"/><circle class="sym-line-dot" cx="8" cy="8" r="2"/></svg>Start / finish line</li>
         <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="sym-buoy" cx="8" cy="8" r="6"/></svg>Inflatable mark</li>
         <li><svg viewBox="0 0 16 16" aria-hidden="true"><path class="sym-red" d="M8 1 L15 14 L1 14 Z"/></svg>Red nun</li>
         <li><svg viewBox="0 0 16 16" aria-hidden="true"><rect class="sym-green" x="2" y="2" width="12" height="12"/></svg>Green can</li>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><line class="legend-leg" x1="1" y1="8" x2="15" y2="8"/><line class="legend-tick" x1="8" y1="3" x2="8" y2="13"/></svg>Tick every 1 nm</li>
       </ul>
-      <p class="note">Drag a mark to move it. Grid lines are 1′ of longitude; 1′ of latitude equals 1 nautical mile.</p>
+      <p id="chart-note" class="note">Drag a mark to move it. Tick marks along each leg are 1 nautical mile apart. Grid lines are 1′ of longitude; 1′ of latitude equals 1 nm.</p>
     </section>
   </div>
 
@@ -129,6 +135,7 @@
   </footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="course.js"></script>
 <script src="wmm.js"></script>
 <script src="app.js"></script>

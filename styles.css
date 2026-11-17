@@ -180,6 +180,49 @@ tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
 .plot .rose-v { fill: var(--magenta); font: 600 9.5px var(--font-mono); }
 .plot .scale line { stroke: var(--ink); stroke-width: 1.5; }
 .plot .scale text { fill: var(--ink); font: 600 9.5px var(--font-mono); }
+.plot .tick { stroke: var(--magenta); stroke-width: 1.6; }
+.legend-leg, .legend-tick { stroke: var(--magenta); stroke-width: 2; }
+.chart-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* real chart map */
+.map {
+  width: 100%; height: min(74vh, 720px); min-height: 420px;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--water);
+  z-index: 0; /* keep Leaflet panes under the sticky header and other UI */
+}
+.map .leaflet-control-attribution { font-size: 10px; }
+.map-mark svg { display: block; filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35)); cursor: grab; }
+.leaflet-dragging .map-mark svg { cursor: grabbing; }
+.map-label.leaflet-tooltip {
+  background: #ffffff; color: #12202b; border: 1px solid #12202b; border-radius: 4px;
+  font: 600 12px var(--font-body); padding: 1px 6px; box-shadow: none;
+}
+.map-label.leaflet-tooltip::before { display: none; }
+.map-tick span, .map-leg span {
+  position: absolute; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.map-tick span {
+  transform: translate(-50%, -50%);
+  font-size: 10.5px; font-weight: 600; color: #a8186f;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff;
+}
+.map-leg span {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #a8186f; color: #fff; font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px 2px 3px; border-radius: 99px; box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+.map-leg span b { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #fff; color: #a8186f; font-size: 11px; }
+.map-leg-right span { transform: translate(0, -50%); }
+.map-leg-left span { transform: translate(-100%, -50%); }
+.map-leg-above span { transform: translate(-50%, -100%); }
+.map-leg-below span { transform: translate(-50%, 0); }
+.nm-scale {
+  display: flex; align-items: center; gap: 6px;
+  background: rgb(255 255 255 / 0.85); color: #12202b; border-radius: 4px; padding: 3px 6px;
+  font: 600 11px var(--font-mono);
+}
+.nm-scale-bar { display: block; height: 6px; border: 2px solid #12202b; border-top: 0; }
+
 .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.8rem; color: var(--muted); }
 .legend li { display: flex; align-items: center; gap: 6px; }
 .legend svg { width: 14px; height: 14px; }

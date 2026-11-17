@@ -132,8 +132,12 @@
     legBody: $("leg-body"), cardBody: $("card-body"), cardMeta: $("card-meta"), cardTotal: $("card-total"),
     plot: $("plot"), coordBody: $("coord-body"),
     reset: $("btn-reset"), copy: $("btn-copy"), print: $("btn-print"), copyStatus: $("copy-status"),
-    varLabel: $("var-label"), varAuto: $("in-varauto"), varHint: $("var-hint")
+    varLabel: $("var-label"), varAuto: $("in-varauto"), varHint: $("var-hint"),
+    map: $("map"), chartToggle: $("in-chart"), chartToggleWrap: $("chart-toggle-wrap"), chartNote: $("chart-note")
   };
+
+  // Inside an embedded frame (such as a claude.ai preview) outside images and printing are blocked.
+  const embedded = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
 
   /** Show the model value in the variation field while auto mode is on. */
   function syncVariationField(varW) {
@@ -273,6 +277,11 @@
       const sx = ax + (dx / len) * trim, sy = ay + (dy / len) * trim;
       const ex = bx - (dx / len) * trim, ey = by - (dy / len) * trim;
       parts.push(`<line class="leg" x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" marker-end="url(#arrow)"/>`);
+      // a tick every nautical mile from the start of the leg
+      for (let k = 1; k < l.nm - 0.05; k++) {
+        const f = k / l.nm, tx0 = ax + (bx - ax) * f, ty0 = ay + (by - ay) * f;
+        parts.push(`<line class="tick" x1="${tx0 - nx * 5}" y1="${ty0 - ny * 5}" x2="${tx0 + nx * 5}" y2="${ty0 + ny * 5}"/>`);
+      }
       const lo = off ? -18 : -16;
       const mx = (ax + bx) / 2 + nx * lo, my = (ay + by) / 2 + ny * lo;
       const anchor = nx * lo > 4 ? "start" : nx * lo < -4 ? "end" : "middle";
@@ -366,12 +375,177 @@
     });
   }
 
+  // ---------- real chart map: Leaflet + NOAA ENC chart service ----------
+  const NOAA_WMS = "https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/NOAAChartDisplay/MapServer/exts/MaritimeChartService/WMSServer";
+  const canUseMap = !!window.L && !embedded;
+  let map = null, chartLayer = null, courseLayer = null, scaleEl = null, draggingMarker = null;
+  const markMarkers = {};
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  function markIconHtml(kind) {
+    const svg = (inner) => `<svg viewBox="0 0 22 22" width="22" height="22" aria-hidden="true">${inner}</svg>`;
+    if (kind === "red") return svg(`<path class="sym-red" d="M11 1.5 L20.5 19 L1.5 19 Z"/>`);
+    if (kind === "green") return svg(`<rect class="sym-green" x="3" y="3" width="16" height="16"/>`);
+    if (kind === "buoy") return svg(`<circle class="sym-buoy" cx="11" cy="11" r="8"/>`);
+    return svg(`<circle class="sym-line" cx="11" cy="11" r="8"/><circle class="sym-line-dot" cx="11" cy="11" r="2.8"/>`);
+  }
+
+  function fitCourse() {
+    const pts = Object.values(state.marks).map((p) => [p.lat, p.lon]);
+    map.fitBounds(L.latLngBounds(pts), { padding: [36, 36] });
+  }
+
+  function initMap() {
+    el.plot.hidden = true;
+    el.map.hidden = false;
+    el.chartToggleWrap.hidden = false;
+    el.chartNote.textContent = "Drag a mark to move it. Tick marks along each leg are 1 nautical mile apart. Click the chart to zoom with the scroll wheel. Chart: NOAA ENC. Not for navigation.";
+
+    map = L.map(el.map, { zoomSnap: 0.25, scrollWheelZoom: false });
+    map.attributionControl.setPrefix("Not for navigation");
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+    chartLayer = L.tileLayer.wms(NOAA_WMS, {
+      layers: "0,1,2,3,4,5,6,7", format: "image/png", transparent: true, version: "1.3.0",
+      tileSize: 512, maxZoom: 18,
+      attribution: '<a href="https://nauticalcharts.noaa.gov/">NOAA ENC</a>'
+    });
+    if (state.showChart !== false) chartLayer.addTo(map);
+    el.chartToggle.checked = state.showChart !== false;
+    el.chartToggle.addEventListener("change", () => {
+      state.showChart = el.chartToggle.checked;
+      if (state.showChart) chartLayer.addTo(map); else chartLayer.remove();
+      save();
+    });
+
+    courseLayer = L.layerGroup().addTo(map);
+
+    COURSE.marks.forEach((m) => {
+      const p = state.marks[m.id];
+      const icon = L.divIcon({ className: "map-mark", html: markIconHtml(m.kind), iconSize: [22, 22], iconAnchor: [11, 11] });
+      const mk = L.marker([p.lat, p.lon], { icon, draggable: true, title: `${m.name}, drag to move`, autoPan: true, zIndexOffset: 1000 }).addTo(map);
+      mk.bindTooltip(m.name, { permanent: true, direction: "right", offset: [12, 0], className: "map-label" });
+      mk.on("dragstart", () => { draggingMarker = m.id; });
+      mk.on("drag", (e) => {
+        const ll = e.target.getLatLng();
+        state.marks[m.id] = { lat: ll.lat, lon: ll.lng };
+        update();
+      });
+      mk.on("dragend", () => { draggingMarker = null; update(); });
+      markMarkers[m.id] = mk;
+    });
+
+    // scale bar in nautical miles (the built-in one only does km and statute miles)
+    const NmScale = L.Control.extend({
+      options: { position: "bottomleft" },
+      onAdd() { scaleEl = L.DomUtil.create("div", "nm-scale"); return scaleEl; }
+    });
+    new NmScale().addTo(map);
+
+    map.on("zoomend", () => drawMap(compute()));
+    map.on("zoomend moveend", updateNmScale);
+    map.on("click", () => map.scrollWheelZoom.enable());
+    map.on("mouseout", () => map.scrollWheelZoom.disable());
+    try {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => drawMap(compute()));
+    } catch (_) { /* older browsers */ }
+
+    fitCourse();
+  }
+
+  function updateNmScale() {
+    if (!scaleEl) return;
+    const y = map.getSize().y / 2;
+    const a = map.containerPointToLatLng([20, y]);
+    const pxPerNm = Math.abs(map.latLngToContainerPoint([a.lat - 1 / 60, a.lng]).y - map.latLngToContainerPoint(a).y);
+    const nice = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50].filter((v) => v * pxPerNm <= 140).pop() || 0.1;
+    scaleEl.innerHTML = `<span class="nm-scale-bar" style="width:${Math.round(nice * pxPerNm)}px"></span><span>${nice} nm</span>`;
+  }
+
+  /** Draw legs, arrows, 1 nm ticks and labels in screen space so they stay crisp at every zoom. */
+  function drawMap(r) {
+    if (!map) return;
+    courseLayer.clearLayers();
+    const magenta = cssVar("--magenta") || "#a8186f";
+    const P = (id) => map.latLngToLayerPoint([state.marks[id].lat, state.marks[id].lon]);
+    const LL = (x, y) => map.layerPointToLatLng(L.point(x, y));
+    const legKeys = new Set(r.legs.map((l) => `${l.from}>${l.to}`));
+
+    r.legs.forEach((l) => {
+      const a = P(l.from), b = P(l.to);
+      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+      const off = legKeys.has(`${l.to}>${l.from}`) ? -6 : 0;
+      const ax = a.x + nx * off, ay = a.y + ny * off, bx = b.x + nx * off, by = b.y + ny * off;
+      const trim = Math.min(13, len / 3);
+      const sx = ax + ux * trim, sy = ay + uy * trim, ex = bx - ux * trim, ey = by - uy * trim;
+
+      L.polyline([LL(sx, sy), LL(ex, ey)], { color: magenta, weight: 3, opacity: 0.95, interactive: false }).addTo(courseLayer);
+      const hx = ex - ux * 11, hy = ey - uy * 11;
+      L.polygon([LL(ex, ey), LL(hx + nx * 5.5, hy + ny * 5.5), LL(hx - nx * 5.5, hy - ny * 5.5)],
+        { stroke: false, fillColor: magenta, fillOpacity: 1, interactive: false }).addTo(courseLayer);
+
+      // leg label goes on the side with more room; tick numbers go on the other side
+      let lo = off ? -22 : -18;
+      const midC = map.layerPointToContainerPoint(L.point((ax + bx) / 2, (ay + by) / 2));
+      const size = map.getSize();
+      const towardX = midC.x + nx * lo * 6, awayX = midC.x - nx * lo * 6, cx = size.x / 2;
+      if (!off && Math.abs(towardX - cx) > size.x * 0.12 && Math.abs(towardX - cx) > Math.abs(awayX - cx)) lo = -lo;
+      const tickSide = lo > 0 ? -1 : 1;
+
+      // a tick every nautical mile, numbered from the start of the leg
+      const stepPx = len / l.nm;
+      for (let k = 1; k < l.nm - 0.05; k++) {
+        const f = k / l.nm, tx = ax + (bx - ax) * f, ty = ay + (by - ay) * f;
+        L.polyline([LL(tx - nx * 7, ty - ny * 7), LL(tx + nx * 7, ty + ny * 7)],
+          { color: magenta, weight: 2.5, opacity: 1, interactive: false }).addTo(courseLayer);
+        if (stepPx >= 22) {
+          L.marker(LL(tx + nx * 16 * tickSide, ty + ny * 16 * tickSide), {
+            interactive: false, keyboard: false,
+            icon: L.divIcon({ className: "map-tick", html: `<span>${k}</span>`, iconSize: null })
+          }).addTo(courseLayer);
+        }
+      }
+
+      const mx = (ax + bx) / 2 + nx * lo, my = (ay + by) / 2 + ny * lo;
+      const side = Math.abs(nx) >= Math.abs(ny) ? (nx * lo > 0 ? "right" : "left") : (ny * lo > 0 ? "below" : "above");
+      const text = len > 110 ? `<b>${l.n}</b>${fmtCourse(l.magnetic)}M · ${fmtNm(l.nm)} nm` : `<b>${l.n}</b>`;
+      L.marker(LL(mx, my), {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({ className: `map-leg map-leg-${side}`, html: `<span>${text}</span>`, iconSize: null })
+      }).addTo(courseLayer);
+    });
+
+    COURSE.marks.forEach((m) => {
+      const mk = markMarkers[m.id];
+      if (m.id !== draggingMarker) mk.setLatLng([state.marks[m.id].lat, state.marks[m.id].lon]);
+      // put the name on the side away from the nearest other mark
+      const me = P(m.id);
+      let nearest = null, best = Infinity;
+      COURSE.marks.forEach((o) => {
+        if (o.id === m.id) return;
+        const q = P(o.id), d = me.distanceTo(q);
+        if (d < best) { best = d; nearest = q; }
+      });
+      const dir = nearest && best < 90 && nearest.x > me.x + 4 ? "left" : "right";
+      const tip = mk.getTooltip();
+      if (tip && tip.options.direction !== dir) {
+        tip.options.direction = dir;
+        tip.options.offset = L.point(dir === "left" ? -12 : 12, 0);
+        mk.closeTooltip(); mk.openTooltip();
+      }
+    });
+    updateNmScale();
+  }
+
   // ---------- update loop ----------
   function update({ coords = true } = {}) {
     const r = compute();
     syncVariationField(r.varW);
     renderNumbers(r);
-    renderPlot(r);
+    if (map) drawMap(r); else renderPlot(r);
     if (coords) syncCoordInputs();
     else COURSE.marks.forEach((m) => {
       const p = state.marks[m.id];
@@ -409,6 +583,7 @@
     state.marks = defaultMarks();
     proj = null;
     update();
+    if (map) fitCourse();
   });
 
   el.copy.addEventListener("click", () => {
@@ -428,8 +603,6 @@
     done(ok ? "Copied" : "Copy blocked. Select the card text instead.");
   }
 
-  // Printing works on a normal web page but not inside an embedded frame.
-  const embedded = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
   if (embedded) el.print.hidden = true;
   el.print.addEventListener("click", () => window.print());
 
@@ -467,6 +640,13 @@
   // ---------- boot ----------
   buildCoordTable();
   syncInputs();
+  if (canUseMap) {
+    try { initMap(); } catch (err) {
+      // fall back to the plain grid if the map library fails
+      console.error(err);
+      map = null; el.map.hidden = true; el.plot.hidden = false; el.chartToggleWrap.hidden = true;
+    }
+  }
   update();
 
   // expose for testing in the console
