@@ -396,7 +396,7 @@
   }
 
   function initMap() {
-    el.plot.hidden = true;
+    el.plot.setAttribute("hidden", "");
     el.map.hidden = false;
     el.chartToggleWrap.hidden = false;
     el.chartNote.textContent = "Drag a mark to move it. Tick marks along each leg are 1 nautical mile apart. Click the chart to zoom with the scroll wheel. Chart: NOAA ENC. Not for navigation.";
@@ -644,7 +644,7 @@
     try { initMap(); } catch (err) {
       // fall back to the plain grid if the map library fails
       console.error(err);
-      map = null; el.map.hidden = true; el.plot.hidden = false; el.chartToggleWrap.hidden = true;
+      map = null; el.map.hidden = true; el.plot.removeAttribute("hidden"); el.chartToggleWrap.hidden = true;
     }
   }
   update();
