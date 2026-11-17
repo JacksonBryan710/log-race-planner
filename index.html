@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Log Race Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Plan compass courses and a predicted elapsed time for a predicted log race.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <h1>Log Race Planner</h1>
+    <p class="lede">Enter your cruising speed to get the compass course for each leg and the predicted elapsed time for your entry form. Drag a mark on the chart or edit its coordinates to re-plan.</p>
+  </header>
+
+  <div class="layout">
+    <div class="col-main">
+
+      <section class="panel inputs" aria-labelledby="inputs-h">
+        <h2 id="inputs-h">Boat and compass</h2>
+        <div class="fields">
+          <label class="field field-speed" for="in-mph">
+            <span class="field-label">Cruising speed</span>
+            <span class="input-unit"><input id="in-mph" type="number" inputmode="decimal" min="0" step="0.5"><span>mph</span></span>
+            <span class="field-hint"><span id="out-kt" class="mono">–</span> knots</span>
+          </label>
+          <div class="field">
+            <label class="field-label" for="in-var">Magnetic variation</label>
+            <span class="input-unit"><input id="in-var" type="number" inputmode="decimal" min="0" max="30" step="0.1">
+              <select id="in-vardir" aria-label="Variation direction"><option value="W">° W</option><option value="E">° E</option></select></span>
+            <label class="check" for="in-varauto"><input id="in-varauto" type="checkbox"> Calculate from mark positions</label>
+            <span id="var-hint" class="field-hint">Check the compass rose on your chart</span>
+          </div>
+          <label class="field" for="in-startsec">
+            <span class="field-label">Standing start</span>
+            <span class="input-unit"><input id="in-startsec" type="number" inputmode="numeric" min="0" step="5"><span>sec</span></span>
+            <span class="field-hint">Time lost getting up to speed</span>
+          </label>
+          <label class="field" for="in-roundsec">
+            <span class="field-label">Each mark rounding</span>
+            <span class="input-unit"><input id="in-roundsec" type="number" inputmode="numeric" min="0" step="5"><span>sec</span></span>
+            <span class="field-hint">Added at marks 1 through 4</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="result" aria-labelledby="result-h">
+        <div class="result-main">
+          <h2 id="result-h" class="result-label">Predicted elapsed time</h2>
+          <p class="result-value"><span id="out-predicted" class="mono">–</span><span class="result-unit">min</span></p>
+          <p class="result-exact">Exact: <span id="out-exact" class="mono">–</span></p>
+        </div>
+        <dl class="result-stats">
+          <div><dt>Course length</dt><dd><span id="out-total-nm" class="mono">–</span> nm</dd></div>
+          <div><dt>Statute miles</dt><dd><span id="out-total-mi" class="mono">–</span> mi</dd></div>
+          <div><dt>Variation</dt><dd id="var-label" class="mono">–</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="legs-h">
+        <h2 id="legs-h">Legs</h2>
+        <div class="table-wrap">
+          <table class="legs">
+            <thead><tr>
+              <th class="num">Leg</th><th>Course</th><th class="num">Compass</th><th class="num">True</th>
+              <th class="num">nm</th><th class="num">mi</th><th class="num">Leg time</th><th class="num">Elapsed</th>
+            </tr></thead>
+            <tbody id="leg-body"></tbody>
+          </table>
+        </div>
+        <p class="note">Compass = true course + west variation. Apply your own compass deviation card if you have one. Times are min:sec.</p>
+      </section>
+
+    </div>
+
+    <section class="panel chart-panel col-side" aria-labelledby="chart-h">
+      <div class="chart-head">
+        <h2 id="chart-h">Course plot</h2>
+        <button id="btn-reset" class="btn btn-quiet" type="button">Reset marks to SI</button>
+      </div>
+      <svg id="plot" class="plot" role="img" aria-label="Course plot of the race marks"></svg>
+      <ul class="legend" aria-label="Chart symbols">
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="sym-line" cx="8" cy="8" r="6"/><circle class="sym-line-dot" cx="8" cy="8" r="2"/></svg>Start / finish line</li>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="sym-buoy" cx="8" cy="8" r="6"/></svg>Inflatable mark</li>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><path class="sym-red" d="M8 1 L15 14 L1 14 Z"/></svg>Red nun</li>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><rect class="sym-green" x="2" y="2" width="12" height="12"/></svg>Green can</li>
+      </ul>
+      <p class="note">Drag a mark to move it. Grid lines are 1′ of longitude; 1′ of latitude equals 1 nautical mile.</p>
+    </section>
+  </div>
+
+  <section class="helm-card" aria-labelledby="card-h">
+    <div class="card-head">
+      <div>
+        <h2 id="card-h">Helm card</h2>
+        <p id="card-meta" class="card-meta mono"></p>
+      </div>
+      <div class="card-actions">
+        <button id="btn-copy" class="btn" type="button">Copy as text</button>
+        <button id="btn-print" class="btn btn-quiet" type="button">Print</button>
+        <span id="copy-status" class="copy-status" role="status"></span>
+      </div>
+    </div>
+    <ol id="card-body" class="card-legs"></ol>
+    <div class="card-foot">
+      <span>Predicted elapsed</span><strong id="card-total" class="mono">–</strong>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="coords-h">
+    <h2 id="coords-h">Mark coordinates</h2>
+    <div class="table-wrap">
+      <table class="coords">
+        <thead><tr><th>Mark</th><th>Latitude</th><th>Longitude</th><th><span class="sr-only">Map link</span></th></tr></thead>
+        <tbody id="coord-body"></tbody>
+      </table>
+    </div>
+    <p class="note">Course: Start → C (stbd) → R "2" (port) → C (stbd) → G "1" (port) → Finish.</p>
+  </section>
+
+  <footer class="foot">
+    <p>Distances and courses use rhumb lines, the path you follow when holding one compass heading. This is a planning aid. Verify every course on your chart before the race.</p>
+  </footer>
+</div>
+
+<script src="course.js"></script>
+<script src="wmm.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
